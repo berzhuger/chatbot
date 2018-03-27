@@ -108,16 +108,26 @@ function callWatson(payload, sender) {
 	w_conversation.message(payload, function (err, results) {
     	if (err) return responseToRequest.send("Erro > " + JSON.stringify(err));
 
-		if(results.context != null) contexto_atual = results.context;
+		if(results.context !== null) contexto_atual = results.context;
 		
-        if(results != null && results.output != null){
+        if(results !== null && results.output !== null){
 			var i = 0;
 			while(i < results.output.text.length){
-				sendMessage(sender, results.output.text[i++]);
+				if (results.intents[0].intent == 'boleto' && results.context.hasOwnProperty('carteiraUnimed')) {
+					buscaInformacoes(function (data){
+            if (data.hasOwnProperty('nome')) {
+                mensagem = 'Olá '+data.nome+', em que posso ajudar?';
+							}
+						}
+					);	
+					sendMessage(sender, mensagem);
+				} else {
+					sendMessage(sender, results.output.text[i++]);
+				}
 			}
 		}
             
-    });
+  });
 }
 
 function sendMessage(sender, text_) {
@@ -159,3 +169,31 @@ app.use(function (req, res, next) {
 app.use(function (err, req, res, next) {
   res.sendFile(path.join(__dirname, '../public/assets', '500.html'));
 })
+
+
+
+//funcoes para chamar as paradas
+function buscaInformacoes(callback) {
+	var options = {
+			url: "https://srv-hu-mv01:3443/mvagendaintegra/rest/paciente/obterPorNroCarteira/00550200006770006",
+			method: "GET",
+			headers: {
+					Token: "MV"
+			}
+	}
+	request(options, function (error, response, body) {
+			if (!error) {
+					try {
+							json = JSON.parse(body);
+							this.nome = json.nome;
+							callback(json);
+					} catch (error) {
+							
+							console.log('não foi possivel localizar os seus dadados, por favor verifique as informações');
+							error = 'não foi possivel localizar os seus dadados, por favor verifique as informações'
+							callback(error);
+					}
+
+			}
+	})
+};
