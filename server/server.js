@@ -4,21 +4,16 @@
 //     port: 9411,
 //     serviceName:'frontend'
 // });
-
 require('appmetrics-dash').attach();
 require('appmetrics-prometheus').attach();
-
 const appName = require('./../package').name;
 const express = require('express');
 const log4js = require('log4js');
 const localConfig = require('./config/local.json');
 const path = require('path');
-
 var request = require('request');
 var bodyParser = require('body-parser');
 var Conversation = require('watson-developer-cloud/conversation/v1'); // watson sdk
-
-
 const logger = log4js.getLogger(appName);
 const app = express().use(bodyParser.json());
 app.use(log4js.connectLogger(logger, { level: process.env.LOG_LEVEL || 'info' }));
@@ -37,14 +32,10 @@ var w_conversation = new Conversation({
   version: 'v1'
 });
 
-//CODIGO TESTE FACEBOOK APLICATION
-
 // Adds support for GET requests to our webhook
 app.get('/webhook', (req, res) => {
-
 	// Your verify token. Should be a random string.
 	let VERIFY_TOKEN = "EAAC3hL7BjZAMBANP3OzX7AZCn7UhZAKG4LynnWNgIEvNxF9oxZC7Sdv29grmSkFv52hGCjpByXOCcs9SZA2DDtG4JFsdVrkvSc12SYZCJEQdEaZAbZAAjkVrw6ZBkJUOIqF1ZATwpjfTL8GIDSpv3BJCiTlzADJpiNqRsHZBBZAswihGVQZDZD"
-	  
 	// Parse the query params
 	let mode = req.query['hub.mode'];
 	let token = req.query['hub.verify_token'];
@@ -66,19 +57,6 @@ app.get('/webhook', (req, res) => {
 	  }
 	}
   });
-
-
-//FIM DO CODIGO TESTE FACEBOOK APLICATION
-
-
-//app.get('/webhook', function (req, res) {
-	
-	//if (req.query['hub.verify_token'] === 'EAAC3hL7BjZAMBANP3OzX7AZCn7UhZAKG4LynnWNgIEvNxF9oxZC7Sdv29grmSkFv52hGCjpByXOCcs9SZA2DDtG4JFsdVrkvSc12SYZCJEQdEaZAbZAAjkVrw6ZBkJUOIqF1ZATwpjfTL8GIDSpv3BJCiTlzADJpiNqRsHZBBZAswihGVQZDZD') {
-//		res.send(req.query['hub.challenge']);
-	//}
-//
-	//res.send('Erro de validação no token.');
-//});
 
 app.post('/webhook', function (req, res) {
 	var text = null;
@@ -112,18 +90,16 @@ function callWatson(payload, sender) {
 		
         if(results !== null && results.output !== null){
 			var i = 0;
+			if(results.context.acao=='buscaBoletos' && results.context.hasOwnProperty('carteiraUnimed')){
+				var dataPromise = getData(results.context.carteiraUnimed);
+				dataPromise.then(function(result) {
+					results.context.rectoArray = result;
+						console.log("result: "+result);
+						return results;
+					}, errHandler)
+			}
 			while(i < results.output.text.length){
-				if (results.intents[0].intent == 'boleto' && results.context.hasOwnProperty('carteiraUnimed')) {
-					buscaInformacoes(function (data){
-            if (data.hasOwnProperty('nome')) {
-                mensagem = 'Olá '+data.nome+', em que posso ajudar?';
-							}
-						}
-					);	
-					sendMessage(sender, mensagem);
-				} else {
-					sendMessage(sender, results.output.text[i++]);
-				}
+				sendMessage(sender, results.output.text[i++]);
 			}
 		}
             
@@ -151,14 +127,45 @@ function sendMessage(sender, text_) {
     });
 };
 
-//app.listen(process.env.PORT || 3000);
+
+function getData(numeroCarteira) {
+    var dados = [];
+    // Setting URL and headers for request
+    var url = 'https://portal.vs.unimed.com.br:9001/ws/WSINFORMACOESPLANO.apw?WSDL';
+    var args = {
+        CCODIGOCLI: numeroCarteira,
+        CTIPOCLI: 'F',
+        };  
+    // Return new promise 
+    return new Promise(function(resolve, reject) {
+        soap.createClient(url, function(err, client) {
+            client.COBRANCAS_CLI(args, function(err, result) {
+                for (var i=0; i < result.COBRANCAS_CLIRESULT.LISTARETORNOCOB.length; i++){
+                    if (result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i].CSTATUS=='EM ABERTO') {
+                        dados.push(JSON.stringify(result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i].CRECNOE1));
+                        console.log(JSON.stringify(result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i].CRECNOE1));
+                    }
+                }
+            });
+            if (err) {
+                reject(err);
+            } else {
+                resolve(dados);
+            }
+        })
+    })
+}
+
+var errHandler = function(err) {
+    console.log(err);
+}
+
 
 const port = process.env.PORT || localConfig.port;
 app.listen(port, function(){
   logger.info(`CreateProjectVDKKI listening on http://localhost:${port}/appmetrics-dash`);
   
   logger.info(`CreateProjectVDKKI listening on http://localhost:${port}`);
-  
   
 });
 
@@ -169,31 +176,3 @@ app.use(function (req, res, next) {
 app.use(function (err, req, res, next) {
   res.sendFile(path.join(__dirname, '../public/assets', '500.html'));
 })
-
-
-
-//funcoes para chamar as paradas
-function buscaInformacoes(callback) {
-	var options = {
-			url: "https://srv-hu-mv01:3443/mvagendaintegra/rest/paciente/obterPorNroCarteira/00550200006770006",
-			method: "GET",
-			headers: {
-					Token: "MV"
-			}
-	}
-	request(options, function (error, response, body) {
-			if (!error) {
-					try {
-							json = JSON.parse(body);
-							this.nome = json.nome;
-							callback(json);
-					} catch (error) {
-							
-							console.log('não foi possivel localizar os seus dadados, por favor verifique as informações');
-							error = 'não foi possivel localizar os seus dadados, por favor verifique as informações'
-							callback(error);
-					}
-
-			}
-	})
-};
