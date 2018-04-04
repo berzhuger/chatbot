@@ -6,12 +6,14 @@
 // });
 require('appmetrics-dash').attach();
 require('appmetrics-prometheus').attach();
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 const appName = require('./../package').name;
 const express = require('express');
 const log4js = require('log4js');
 const localConfig = require('./config/local.json');
 const path = require('path');
 var request = require('request');
+var soap = require('soap');
 var bodyParser = require('body-parser');
 var Conversation = require('watson-developer-cloud/conversation/v1'); // watson sdk
 const logger = log4js.getLogger(appName);
@@ -84,16 +86,22 @@ app.post('/webhook', function (req, res) {
 
 function callWatson(payload, sender) {
 	w_conversation.message(payload, function (err, results) {
-    	if (err) return responseToRequest.send("Erro > " + JSON.stringify(err));
+		//if (err) return responseToRequest.send("Erro > " + JSON.stringify(err));
+		if (err) {
+			console.log("Erro > " + JSON.stringify(err));
+			return ("Erro > " + JSON.stringify(err));
+		}
 
 		if(results.context !== null) contexto_atual = results.context;
 		
         if(results !== null && results.output !== null){
 			var i = 0;
 			if(results.context.acao=='buscaBoletos' && results.context.hasOwnProperty('carteiraUnimed')){
+				console.log(results);
 				var dataPromise = getData(results.context.carteiraUnimed);
 				dataPromise.then(function(result) {
-					results.context.rectoArray = result;
+					results.context.recnoArray = result;
+					results.output.text.push(result);
 						console.log("result: "+result);
 						return results;
 					}, errHandler)
@@ -129,24 +137,32 @@ function sendMessage(sender, text_) {
 
 
 function getData(numeroCarteira) {
-    var dados = [];
-    // Setting URL and headers for request
-    var url = 'https://portal.vs.unimed.com.br:9001/ws/WSINFORMACOESPLANO.apw?WSDL';
-    var args = {
-        CCODIGOCLI: numeroCarteira,
-        CTIPOCLI: 'F',
-        };  
     // Return new promise 
     return new Promise(function(resolve, reject) {
-        soap.createClient(url, function(err, client) {
-            client.COBRANCAS_CLI(args, function(err, result) {
+		var dados = [];
+		// Setting URL and headers for request
+		var url = 'https://portal.vs.unimed.com.br:9001/ws/WSINFORMACOESPLANO.apw?WSDL';
+		//var url = 'http://ws.cdyne.com/delayedstockquote/delayedstockquote.asmx?wsdl';
+		var args = {
+			//00556200100506000
+			CCODIGOCLI: numeroCarteira,
+			CTIPOCLI: 'F',			
+			};  	
+		soap.createClient(url, function(err, client) {
+			client.COBRANCAS_CLI(args, function(err, result) {
                 for (var i=0; i < result.COBRANCAS_CLIRESULT.LISTARETORNOCOB.length; i++){
                     if (result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i].CSTATUS=='EM ABERTO') {
                         dados.push(JSON.stringify(result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i].CRECNOE1));
                         console.log(JSON.stringify(result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i].CRECNOE1));
                     }
-                }
-            });
+                }				
+				console.log(JSON.stringify(result));		
+				if (err) {
+					reject(err);
+				} else {
+					resolve(dados);
+				}			
+			});
             if (err) {
                 reject(err);
             } else {
