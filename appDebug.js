@@ -37,10 +37,10 @@ function processResponse(err, response) {
         console.error(err); // something went wrong
         return;
     }
-
+    //00556200100506000
     if(response.context.acao=='buscaBoletos' && response.context.hasOwnProperty('carteiraUnimed') && entrou==false) {
         entrou = true;
-        console.log(response.context);        
+        console.log(response.context);
         //buscaBoletos(response).then()
         var dataPromise = getData(response.context.carteiraUnimed);
         //.then(JSON.parse, errHandler)
@@ -58,7 +58,6 @@ function processResponse(err, response) {
     // Send back the context to maintain state.
     w_conversation(response, newMessageFromUser);
     }
-
 }
 
 function mostraResposta(response) {
@@ -121,7 +120,7 @@ function getData(numeroCarteira) {
             client.COBRANCAS_CLI(args, function(err, result) {
                 for (var i=0; i < result.COBRANCAS_CLIRESULT.LISTARETORNOCOB.length; i++){
                     if (result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i].CSTATUS=='EM ABERTO') {
-                        dados.push(JSON.stringify(result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i].CRECNOE1));
+                        dados.push(JSON.stringify(result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i]));
                         console.log(JSON.stringify(result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i].CRECNOE1));
                     }
                 }

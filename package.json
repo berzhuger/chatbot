@@ -21,6 +21,7 @@
     "deasync": "^0.1.12",
     "dotenv": "^5.0.1",
     "express": "^4.15.3",
+    "express-session": "^1.15.6",
     "htmlparser": "1.7.7",
     "ibm-cloud-env": "^0",
     "log4js": "^1.1.1",

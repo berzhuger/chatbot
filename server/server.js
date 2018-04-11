@@ -9,6 +9,7 @@ require('appmetrics-prometheus').attach();
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 const appName = require('./../package').name;
 const express = require('express');
+//var session = require('express-session');
 const log4js = require('log4js');
 const localConfig = require('./config/local.json');
 const path = require('path');
@@ -19,12 +20,14 @@ var Conversation = require('watson-developer-cloud/conversation/v1'); // watson 
 const logger = log4js.getLogger(appName);
 const app = express().use(bodyParser.json());
 app.use(log4js.connectLogger(logger, { level: process.env.LOG_LEVEL || 'info' }));
+//app.use(session({secret: 'ssshhhhh23423rf'}));
 const serviceManager = require('./services/service-manager');
 require('./services/index')(app);
 require('./routers/index')(app);
 
 require('dotenv').config({silent: true});
 var contexto_atual = null;
+var botaoFacebook = null;
 
 var w_conversation = new Conversation({
   url: 'https://gateway.watsonplatform.net/conversation/api',
@@ -95,17 +98,32 @@ function callWatson(payload, sender) {
 		if(results.context !== null) contexto_atual = results.context;
 		
         if(results !== null && results.output !== null){
-			var i = 0;
+			var datas = "";
+			var recnoData = "";
 			if(results.context.acao=='buscaBoletos' && results.context.hasOwnProperty('carteiraUnimed')){
-				console.log(results);
+				console.log(results.context);
 				var dataPromise = getData(results.context.carteiraUnimed);
 				dataPromise.then(function(result) {
-					results.context.recnoArray = result;
-					results.output.text.push(result);
-						console.log("result: "+result);
+					console.log("result: "+result);
+					console.log("result stringifado: "+JSON.stringify(result));
+					console.log("result contador: "+ result.length);
+					var i = 0;
+					while(i <= result.length)
+					{	console.log("valor de i "+i);
+						datas += result[i].CDTEMISSAO+" ";
+						recnoData += result[i].CDTEMISSAO+"_"+result[i].CRECNOE1;
+						i++;
+					}
+					results.context.recnoData = datas;
+					results.context.recnoArray = recnoData;
+
+					//results.output.text.push("boleto boleto boleto boleto igor");
+					//results.output.text.push(result);
+						//console.log("result: "+result);
 						return results;
 					}, errHandler)
 			}
+			
 			while(i < results.output.text.length){
 				sendMessage(sender, results.output.text[i++]);
 			}
@@ -115,8 +133,12 @@ function callWatson(payload, sender) {
 }
 
 function sendMessage(sender, text_) {
-	text_ = text_.substring(0, 319);
-	messageData = {	text: text_ };
+	if (text_.hasOwnProperty("attachment")) {
+		messageData = text_;
+	} else {
+		text_ = text_.substring(0, 319);
+		messageData = {	text: text_ };	
+	}
 
     request({
         url: 'https://graph.facebook.com/v2.6/me/messages',
@@ -141,33 +163,42 @@ function getData(numeroCarteira) {
     return new Promise(function(resolve, reject) {
 		var dados = [];
 		// Setting URL and headers for request
-		var url = 'https://portal.vs.unimed.com.br:9001/ws/WSINFORMACOESPLANO.apw?WSDL';
+		//var url = 'https://portal.vs.unimed.com.br:9001/ws/WSINFORMACOESPLANO.apw?WSDL';
+		var url = 'http://portal.vs.unimed.com.br:9003/ws/WSINFORMACOESPLANO.apw?WSDL';
 		//var url = 'http://ws.cdyne.com/delayedstockquote/delayedstockquote.asmx?wsdl';
 		var args = {
 			//00556200100506000
 			CCODIGOCLI: numeroCarteira,
-			CTIPOCLI: 'F',			
-			};  	
+			//CCODIGOCLI: '00556200100506000',
+			CTIPOCLI: 'F',
+			};
 		soap.createClient(url, function(err, client) {
 			client.COBRANCAS_CLI(args, function(err, result) {
-                for (var i=0; i < result.COBRANCAS_CLIRESULT.LISTARETORNOCOB.length; i++){
-                    if (result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i].CSTATUS=='EM ABERTO') {
-                        dados.push(JSON.stringify(result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i].CRECNOE1));
-                        console.log(JSON.stringify(result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i].CRECNOE1));
-                    }
-                }				
-				console.log(JSON.stringify(result));		
-				if (err) {
-					reject(err);
-				} else {
-					resolve(dados);
-				}			
+				try {
+					for (var i=0; i < result.COBRANCAS_CLIRESULT.LISTARETORNOCOB.length; i++){
+						if (result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i].CSTATUS=='EM ABERTO') {
+							//console.log(JSON.stringify(result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i]));
+							dados.push(result.COBRANCAS_CLIRESULT.LISTARETORNOCOB[i]);
+						}
+						resolve(dados);
+					}
+					//console.log(JSON.stringify(result));							
+				} catch(err) {
+					mensagem = "nenhum boleto encontrado"
+					console.log(mensagem);
+					resolve(mensagem);
+				}
+				// if (err) {
+				// 	reject(err);
+				// } else {
+				// 	resolve(dados);
+				// }			
 			});
-            if (err) {
-                reject(err);
-            } else {
-                resolve(dados);
-            }
+            // if (err) {
+            //     reject(err);
+            // } else {
+            //     resolve(dados);
+            // }
         })
     })
 }
